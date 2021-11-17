@@ -1,16 +1,22 @@
+
+# TODO: If a player selects a position that has already been chosen, ask them to choose a valid position.
+# TODO BUGFIX: Sometimes when it's a draw, the program says someone won. Ex:1,9,5,8,7,4,6,3,2 - DRAW but shows as win for player 1
 .data
-	board: .space 36 #9 caracteres, supondo um caractere = 32 bits
+	board: .space 36 #9 characters, assuming a character = 32 bits
 	newLine: .asciiz "\n"
-	winnerMessage_1: .asciiz "\nO jogador "
-	winnerMessage_2: .asciiz " venceu a partida!\n"
+	winnerMessage_1: .asciiz "\nPlayer "
+	winnerMessage_2: .asciiz " won the game!\n"
 	drawMessage: .asciiz "\nIt's a draw!\n"
 
 .text 
 	main:
-		addi $s0, $zero, 0 # s0 vai ser o contador (quando chegar a 9, o tabuleiro vai estar preenchido)
-		la $s1, board # s1 vai conter o endereço do tabuleiro
-		addi $s2, $zero, 0 # jogador com a vez (jogadores 0 e 1). Jogador 0 tem o simbolo X e o 0 tem o simbolo O
-		addi $s3, $zero, 0 # contador que quando chegar a 9 e nao ter vencedor eh porque eh empate
+		#s0 will be the counter (when it gets to 9, which is the number of squares,
+		# the board will be filled)
+		addi $s0, $zero, 0
+		#s1 will contain the board's address
+		la $s1, board
+		#s2 holds the player whose turn it is. Player 0 uses the symbol X and Player 1 uses the symbol O
+		addi $s2, $zero, 0
 		jal initialize_board
 		jal print_board
 		main_loop:
@@ -24,15 +30,15 @@
 			li $v0, 5
 			syscall
 			add $t1, $v0, $zero
-			# X eh 88 e O eh 79
+			# X is 88 and O is 79
 			add $a0, $zero, $t0
 			add $a1, $t1, $zero
 			jal input_user
-			addi $s3, $s3, 1 # s3++
+			addi $s0, $s0, 1 # s0++
 			
 			jal print_board
 			jal check_winner # this is a stop condition
-			beq $s3, 9, draw # also a stop condition
+			beq $s0, 9, draw # also a stop condition
 			
 			add $a0, $s2, $zero
 			jal toggle_player
@@ -66,9 +72,11 @@
 		
 	initialize_board:
 		
-		addi $t1, $zero, 0 #board index
-		addi $t0, $zero, 49 #printed value
+		addi $t1, $zero, 0 # board index
+		addi $t0, $zero, 49 #printed value (ASCII)
 		init_board_loop:
+			# When t1 gets to 36, it means that the board is already full
+			# We can't just write 4 bytes to board($t1) because that's not our space.
 			beq $t1, 36, return_initialize_board
 			sw $t0, board($t1)
 			addi $t1, $t1, 4
@@ -77,9 +85,11 @@
 		return_initialize_board:
 			jr $ra
 	
-	print_board:	
-		addi $t1, $zero, 0 #board index
-		addi $t2, $zero, 1 # counter (whenever it reaches 3, print a new line)
+	print_board:
+		# board index	
+		addi $t1, $zero, 0
+		# counter (whenever it reaches 3, print a new line. Since it is a 3x3 matrix)
+		addi $t2, $zero, 1
 		print_loop:
 			beq $t1, 36, return_printed_board
 			lw $t0, board($t1)
@@ -94,16 +104,15 @@
 			syscall
 			
 			beq $t2, 3, print_new_line
-			print_new_line_return: #nao tem jal condicional em mips
-			# https://stackoverflow.com/questions/36299093/is-it-possible-use-a-conditional-jump-to-jump-to-ra-in-mips/36299190
+			print_new_line_return: # there is no "conditional jal" in MIPS so we have to use labels
 			
 			addi $t1, $t1, 4
 			addi $t2,$t2,1
 			j print_loop
 			
 		print_new_line:
-			addi $t2, $zero, 0 # aqui preciso voltar para 0 e nao para 1. Caso contrario t2 vira 4 no retorno
-			#(vide linha addi $t2,$t2,1 no codigo do print)
+			# Here I have to get t2 back to 0 and not 1. Otherwise t2 becomes 4 when returning
+			addi $t2, $zero, 0
 			li $v0, 4
 			la $a0, newLine
 			syscall
@@ -111,22 +120,20 @@
 		
 		return_printed_board:
 			jr $ra
-	# $a0 = simbolo; $a1 = posicao		
+	# $a0 = symbol; $a1 = position	
 	input_user:
-		# Quando o usuario digita que eh a posicao 2, na verdade eh a posicao 4*(2-1)
-		# pro nosso array que ta na memoria
-		
-		# simbolo
+		# When the user inputs the position 2, it's actually the position 4*(2-1)
+		# to our array in memory
+
+		# symbol
 		add $t0, $a0, $zero
 		
-		#pegando a posicao
+		# position
 		add $t1, $a1, $zero
 		subi $t1, $t1, 1
 		mul $t2, $t1, 4
 		
-		add $t3, $a0, $zero # t3 contem o simbolo
-		
-		sw $t3, board($t2)
+		sw $t0, board($t2)
 		
 		jr $ra
 	draw:
@@ -137,7 +144,7 @@
 	
 	check_winner:
 		
-		#s4 vai conter 0 ou 1 (0 se nao teve vencedor ainda)
+		#s4 will either be 0 or 1. 1 if there is a winner, 0 otherwise.
 		j check_column_winner
 		return_check_column_winner:
 		beq $s4, 0, check_row_winner
@@ -148,58 +155,77 @@
 		jr $ra
 	
 	check_column_winner:
-		addi $t3, $zero, 0 # vai contar o valor inicial atual
-		add $t0, $zero, $t3 # vai iterar sobre cada valor de cada coluna
+		#t3 will count the CURRENT initial value index
+		addi $t3, $zero, 0
+		#t0 will iterate on each value of each column
+		add $t0, $zero, $t3
 		
 		check_column_winner_loop:
-			
-			beq $t3, 12, return_check_column_winner # 12 ja saiu do escopo, entao eh pq nao tem vencedor em colunas
-			lw $t1, board($t0) # t1 tem o primeiro simbolo (88 se X e 79 se Y)
+			# 12 is already out of scope, so there are no winners on columns
+			beq $t3, 12, return_check_column_winner
+			# t1 has the first symbol of the column
+			lw $t1, board($t0)
+			# t0 now points to the next element of the column
 			addi $t0, $t0, 12
 			lw $t2, board($t0)
-			bne $t1, $t2, forward_one_column #se $t1 e $t2 ja nao forem iguais, n adianta checar adiante
-			#daqui ja se admite que a primeira linha eh igual a segunda
+			# if t1 and t2 are not equal by now, it's not worth checking the third value of the column.
+			bne $t1, $t2, forward_one_column
+			# from here on we admit that the first row is equal to the second
 			addi $t0, $t0, 12
 			lw $t2, board($t0)
-			seq $s4, $t1, $t2 # setando s4 pra 1 se encontrou vencedor
-			beq $s4, 1, return_check_column_winner #ir direto pra winner seria melhor, mas menos elegante
-			# quando chegar aqui, ja vai ter checado a coluna inteira
+			# s4 = 1 if we found a winner
+			seq $s4, $t1, $t2
+			# going directly to the "winner" label would be less elegant
+			beq $s4, 1, return_check_column_winner
+			# When it gets here, the program has already checked the entire column
 			j check_column_winner_loop
 			
 			forward_one_column:
-				addi $t3, $t3, 4 # andando pra direita 1 coluna
-				add $t0, $zero, $t3 #t0 vai comecar em t3
+				# Going to the right by 1 column
+				addi $t3, $t3, 4
+				# t0 starts in t3
+				add $t0, $zero, $t3
 				j check_column_winner_loop
 	
 	check_row_winner:
-		addi $t3, $zero, 0 # vai contar o valor inicial atual
-		add $t0, $zero, $t3 # vai iterar sobre cada valor de cada linha
+		#t3 will count the CURRENT initial value index 
+		addi $t3, $zero, 0
+		#t0 will iterate on each value of each row
+		add $t0, $zero, $t3
 		
 		check_row_winner_loop:
-			
-			beq $t3, 36, return_check_row_winner # 36 ja saiu do escopo, entao eh pq nao tem vencedor em linhas
-			lw $t1, board($t0) # t1 tem o primeiro simbolo (88 se X e 79 se Y)
+		
+			# 36 is already out of scope, so there are no winners on rows
+			beq $t3, 36, return_check_row_winner
+			# t1 has the first symbol of the row
+			lw $t1, board($t0)
 			addi $t0, $t0, 4
 			lw $t2, board($t0)
-			bne $t1, $t2, forward_one_row #se $t1 e $t2 ja nao forem iguais, n adianta checar adiante
-			#daqui ja se admite que a primeira linha eh igual a segunda
+			# if t1 and t2 are not equal by now, it's not worth checking the third value of the row.
+			bne $t1, $t2, forward_one_row
+			# from here on we admit that the first column is equal to the second
 			addi $t0, $t0, 4
 			lw $t2, board($t0)
-			seq $s4, $t1, $t2 # setando s4 pra 1 se encontrou vencedor
-			beq $s4, 1, return_check_row_winner #ir direto pra winner seria melhor, mas menos elegante
-			# quando chegar aqui, ja vai ter checado a coluna inteira
+			# s4 = 1 if we found a winner
+			seq $s4, $t1, $t2
+			# going directly to the "winner" label would be less elegant
+			beq $s4, 1, return_check_row_winner 
+			# When it gets here, the program has already checked the entire row
 			j check_row_winner_loop
 			
 			forward_one_row:
-				addi $t3, $t3, 12 # andando pra baixo 1 linha
-				add $t0, $zero, $t3 #t0 vai comecar em t3
+				# Going down one row
+				addi $t3, $t3, 12
+				# t0 starts in t3 
+				add $t0, $zero, $t3
 				j check_row_winner_loop
 	
 	check_diagonal_winner:
-		#Basta checar uma diagonal e depois a outra. Nem precisa de loop.
-		# Primeira diagonal \
+		# It is enough to check each diagonal. No need for a loop.
+		# First diagonal \
 		first_diagonal:
-			addi $t0, $zero, 0 # index
+			# t0 is the index for our board
+			addi $t0, $zero, 0
 			lw $t1, board($t0)
 			addi $t0, $t0, 16
 			lw $t2, board($t0)
@@ -207,10 +233,10 @@
 			addi $t0, $t0, 16
 			lw $t2, board($t0)
 			seq $s4, $t1, $t2
-			#beq $t1,$t2, return_check_diagonal_winner #nao precisaria de seq mas so pra deixar padronizado
+			#beq $t1,$t2, return_check_diagonal_winner # there's no need for "seq" but just making this standard
 			beq $s4, 1, return_check_diagonal_winner
 			
-		# Segunda diagonal /
+		# Second diagonal /
 		second_diagonal:
 			addi $t0, $zero, 8 # index
 			lw $t1, board($t0)
@@ -219,12 +245,14 @@
 			bne $t1, $t2, return_check_diagonal_winner
 			addi $t0, $t0, 8
 			lw $t2, board($t0)
-			bne $t1, $t2, return_check_diagonal_winner #otherwise it would just fall down to "winner"
+			bne $t1, $t2, return_check_diagonal_winner
 			seq $s4, $t1, $t2
 			beq $s4, 1, return_check_diagonal_winner
 	
 	winner:
-		addi $s2, $s2, 1 #ja que eu quero que mostre jogador 1 ou 2 e nao 0 ou 1
+		# Since I want it to display Player 1 and Player 2 and not "Player 0" and "Player 1"
+		# I incremented s2
+		addi $s2, $s2, 1
 		li $v0, 4
 		la $a0, winnerMessage_1
 		syscall
